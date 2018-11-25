@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter_app_todo/add_todo_screen.dart';
+import 'package:intl/intl.dart';
 
 void main() => runApp(MyApp());
 
@@ -20,7 +23,7 @@ class MyApp extends StatelessWidget {
         // is not restarted.
         primarySwatch: Colors.blue,
       ),
-      home: MyHomePage(title: 'Flutter Demo Home Page'),
+      home: MyHomePage(title: 'MY TODO'),
     );
   }
 }
@@ -44,17 +47,9 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
-
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  @override
+  void initState() {
+    super.initState();
   }
 
   @override
@@ -71,41 +66,88 @@ class _MyHomePageState extends State<MyHomePage> {
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.display1,
-            ),
-          ],
-        ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: Firestore.instance
+            .collection('MyTodo')
+            .orderBy('datetime', descending: true)
+            .snapshots(),
+        builder: (BuildContext context, AsyncSnapshot<QuerySnapshot> snapshot) {
+          if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+          if (snapshot.data.documents.length == 0)
+            return Center(child: Text('Empty', style: TextStyle(fontSize: 16)));
+          switch (snapshot.connectionState) {
+            case ConnectionState.waiting:
+              return Text('Loading...');
+            default:
+              return ListView(
+                children:
+                    snapshot.data.documents.map((DocumentSnapshot document) {
+                  return ListTile(
+                    contentPadding: EdgeInsets.all(10),
+                    title: Text(
+                      document['title'],
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w600,
+                          decoration: document['check']
+                              ? TextDecoration.lineThrough
+                              : TextDecoration.none),
+                    ),
+                    subtitle: Text(
+                      "Create At: " + document['datetime'],
+                      style: TextStyle(fontSize: 14, color: Colors.black54),
+                    ),
+                    trailing: Checkbox(
+                      value: document['check'],
+                      onChanged: (check) {
+                        _updateTodo(document.documentID, check);
+                      },
+                    ),
+                  );
+                }).toList(),
+              );
+          }
+        },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
+        onPressed: () {
+          _addTodoPage();
+        },
+        tooltip: 'Add Todo',
         child: Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+      ),
     );
+  }
+
+  void _addTodoPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddTODOScreen(
+              callback: _addDataToFireStore,
+            ),
+      ),
+    );
+  }
+
+  _addDataToFireStore(String title) {
+    Firestore.instance
+        .collection('MyTodo')
+        .document()
+        .setData({'title': title, 'check': false, 'datetime': _getTimeStamp()});
+  }
+
+  _updateTodo(String documentId, bool check) {
+    Firestore.instance
+        .collection('MyTodo')
+        .document(documentId)
+        .updateData({'check': check});
+  }
+
+  String _getTimeStamp() {
+    DateTime now = DateTime.now();
+    String formattedDate = DateFormat('yyyy/mm/dd kk:mm:ss').format(now);
+    print(formattedDate);
+    return formattedDate;
   }
 }
